@@ -9,7 +9,8 @@
 # * read: alos returns cue marker labels, see https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#labl
 # * read: 24 bit & 32 bit IEEE files support (inspired from wavio_weckesser.py from Warren Weckesser)
 # * write: 24 bit support
-# * write: can write cue marker chunk (that was read before) or create a cue marker chunk from a cue marker list
+# * write: can write cue marker chunk (that was read before) or create a new cue marker chunk from a list of cue markers
+# * write: can write smpl (i.e. loops) chunk (that was read before) or create a new smpl chunk from a list of loops
 # * removed RIFX support (big-endian) (never seen one in 10+ years of audio production/audio programming), only RIFF (little-endian) are supported
 # * removed read(..., mmap)
 #
@@ -145,8 +146,8 @@ def read(file, readmarkers=False, readpitch=False, cuechunk=False, smplchunk=Fal
     cue = []
     _cuelabels = []
     pitch = 0.0
-    cuechunkstr=''
-    smplchunkstr=''
+    cuechunkstr = ''
+    smplchunkstr = ''
     while (fid.tell() < fsize):
         # read the next chunk
         chunk_id = fid.read(4)
@@ -155,17 +156,17 @@ def read(file, readmarkers=False, readpitch=False, cuechunk=False, smplchunk=Fal
         elif chunk_id == b'data':
             data = _read_data_chunk(fid, noc, bits)
         elif chunk_id == b'cue ':
-            str1=fid.read(8)
+            str1 = fid.read(8)
             size, numcue = struct.unpack('<ii',str1)
-            cuechunkstr+=str1
+            cuechunkstr += str1
             for c in range(numcue):
-               str1=fid.read(24)
-               cuechunkstr+=str1
+               str1 = fid.read(24)
+               cuechunkstr += str1
                id, position, datachunkid, chunkstart, blockstart, sampleoffset = struct.unpack('<iiiiii',str1)
                cue.append(position)
         elif chunk_id == b'LIST':
-            str1=fid.read(8)
-            size, type = struct.unpack('<ii',str1)
+            str1 = fid.read(8)
+            size, type = struct.unpack('<ii', str1)
         elif chunk_id in [b'ICRD', b'IENG', b'ISFT', b'ISTJ']:    # see http://www.pjb.com.au/midi/sfspec21.html#i5
             _skip_unknown_chunk(fid)
         elif chunk_id == b'labl':
@@ -174,15 +175,15 @@ def read(file, readmarkers=False, readpitch=False, cuechunk=False, smplchunk=Fal
             size = size + (size % 2)                              # the size should be even, see WAV specfication, e.g. 16=>16, 23=>24
             _cuelabels.append(fid.read(size-4).rstrip('\x00'))    # remove the trailing null characters
         elif chunk_id == b'smpl':
-            smplchunkstr=fid.read(4)
+            smplchunkstr = fid.read(4)
             size = struct.unpack('<i',smplchunkstr)[0]
-            str1=fid.read(size)
-            smplchunkstr+=str1
+            str1 = fid.read(size)
+            smplchunkstr += str1
             midiunitynote, midipitchfraction = struct.unpack('<iI',str1[12:20])
             cents = midipitchfraction * 1./(2**32-1)
-            pitch = 440. * 2 ** ((midiunitynote+cents - 69.)/12)
+            pitch = 440. * 2 ** ((midiunitynote + cents - 69.)/12)
         else:
-            warnings.warn("Chunk "+chunk_id+" skipped", WavFileWarning)
+            warnings.warn("Chunk " + chunk_id + " skipped", WavFileWarning)
             _skip_unknown_chunk(fid)
     fid.close()
     
@@ -195,7 +196,7 @@ def read(file, readmarkers=False, readpitch=False, cuechunk=False, smplchunk=Fal
 
 # Write a wave-file
 # sample rate, data
-def write(filename, rate, data, cuechunk=None, cue=None, smplchunk=None, bitrate=None):
+def write(filename, rate, data, cuechunk=None, cue=None, smplchunk=None, loops=None, bitrate=None):
     """
     Write a numpy array as a WAV file
 
@@ -255,12 +256,20 @@ def write(filename, rate, data, cuechunk=None, cue=None, smplchunk=None, bitrate
       size = 4 + len(cue) * 24
       fid.write(struct.pack('<ii', size, len(cue)))
       for i, c in enumerate(cue):
-        s = struct.pack('<iiiiii',i,c,1635017060,0,0,c)           # 1635017060 is struct.unpack('<i',b'data')
+        s = struct.pack('<iiiiii', i + 1, c, 1635017060, 0, 0, c)           # 1635017060 is struct.unpack('<i',b'data')
         fid.write(s)
     # smpl chunk
     if smplchunk != None: 
       fid.write(b'smpl')
       fid.write(smplchunk)
+    elif loops:
+      fid.write(b'smpl')
+      size = 36 + len(loops) * 24
+      sampleperiod = int(1000000000.0 / rate)
+      fid.write(struct.pack('<iiiiiiiiii', size, 0, 0, sampleperiod, 0, 0, 0, 0, len(loops), 0))
+      for i, loop in enumerate(loops):
+        fid.write(struct.pack('<iiiiii', 0, 0, loop[0], loop[1], 0, 0))
+
     # Determine file size and place it in correct
     #  position at start of the file.
     size = fid.tell()
