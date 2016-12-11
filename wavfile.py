@@ -9,6 +9,7 @@
 # * read: alos returns cue marker labels, see https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#labl
 # * read: 24 bit & 32 bit IEEE files support (inspired from wavio_weckesser.py from Warren Weckesser)
 # * write: 24 bit support
+# * write: can write cue marker chunk (that was read before) or create a cue marker chunk from a cue marker list
 # * removed RIFX support (big-endian) (never seen one in 10+ years of audio production/audio programming), only RIFF (little-endian) are supported
 # * removed read(..., mmap)
 #
@@ -194,7 +195,7 @@ def read(file, readmarkers=False, readpitch=False, cuechunk=False, smplchunk=Fal
 
 # Write a wave-file
 # sample rate, data
-def write(filename, rate, data, cuechunk=None, smplchunk=None, bitrate=None):
+def write(filename, rate, data, cuechunk=None, cue=None, smplchunk=None, bitrate=None):
     """
     Write a numpy array as a WAV file
 
@@ -249,6 +250,13 @@ def write(filename, rate, data, cuechunk=None, smplchunk=None, bitrate=None):
     if cuechunk != None: 
       fid.write(b'cue ')
       fid.write(cuechunk)
+    elif cue:    # != None and != []
+      fid.write(b'cue ')
+      size = 4 + len(cue) * 24
+      fid.write(struct.pack('<ii', size, len(cue)))
+      for i, c in enumerate(cue):
+        s = struct.pack('<iiiiii',i,c,1635017060,0,0,c)           # 1635017060 is struct.unpack('<i',b'data')
+        fid.write(s)
     # smpl chunk
     if smplchunk != None: 
       fid.write(b'smpl')
