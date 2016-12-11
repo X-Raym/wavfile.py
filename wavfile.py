@@ -9,7 +9,7 @@
 # * read: alos returns cue marker labels, see https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#labl
 # * read: 24 bit & 32 bit IEEE files support (inspired from wavio_weckesser.py from Warren Weckesser)
 # * write: 24 bit support
-# * removed RIFX support (big-endian) (never seen once in 10+ years of audio production/audio programming), only RIFF (little-endian) are supported
+# * removed RIFX support (big-endian) (never seen one in 10+ years of audio production/audio programming), only RIFF (little-endian) are supported
 # * removed read(..., mmap)
 #
 # Todo:
