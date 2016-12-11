@@ -1,7 +1,7 @@
 # wavfile.py (Enhanced)
 # Date: 2016/12/11 Joseph Basquin
 # URL: https://gist.github.com/josephernest/3f22c5ed5dabf1815f16efa8fa53d476
-# Source: C:\Python27\Lib\site-packages\scipy\io\wavfile.py
+# Source: scipy/io/wavfile.py
 #
 # Added:
 # * read: also returns bitrate
