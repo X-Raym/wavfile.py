@@ -1,25 +1,26 @@
-# From C:\Python27\Lib\site-packages\scipy\io\wavfile.py
-#
-# Test:
-# ..\wav\____wav_wavefile_demo.py
+# wavfile.py (Enhanced)
+# Date: 2016/12/11 Joseph Basquin
+# URL: https://gist.github.com/josephernest/3f22c5ed5dabf1815f16efa8fa53d476
+# Source: C:\Python27\Lib\site-packages\scipy\io\wavfile.py
 #
 # Added:
 # * read: also returns bitrate
 # * read: also returns cue markers + pitch (if chunk present)
 # * read: alos returns cue marker labels, see https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#labl
 # * read: 24 bit & 32 bit IEEE files support (inspired from wavio_weckesser.py from Warren Weckesser)
-# * write 24 bit support
-# * removed: RIFX support (big-endian), only RIFF (little-endian) are kept
+# * write: 24 bit support
+# * removed RIFX support (big-endian) (never seen once in 10+ years of audio production/audio programming), only RIFF (little-endian) are supported
 # * removed read(..., mmap)
 #
 # Todo:
-# * bug: write: cue markers for 24 bit files
+# *
 #
 # Notes:
 # * cue markers / cue marker labels are *not* sorted
 #
-# Date:
-# 2016/12/11 Joseph Basquin
+# Test:
+# ..\wav\____wav_wavefile_demo.py
+
 
 """
 Module to read / write wav files using numpy arrays
@@ -33,7 +34,6 @@ Functions
 """
 from __future__ import division, print_function, absolute_import
 
-import wave
 import numpy
 import struct
 import warnings
@@ -215,52 +215,47 @@ def write(filename, rate, data, cuechunk=None, smplchunk=None, bitrate=None):
       (Nsamples, Nchannels).
 
     """
-    if bitrate != 24:
-        fid = open(filename, 'wb')
-        fid.write(b'RIFF')
-        fid.write(b'\x00\x00\x00\x00')
-        fid.write(b'WAVE')
-        # fmt chunk
-        fid.write(b'fmt ')
-        if data.ndim == 1:
-            noc = 1
-        else:
-            noc = data.shape[1]
-        bits = data.dtype.itemsize * 8
-        sbytes = rate*(bits // 8)*noc
-        ba = noc * (bits // 8)
-        fid.write(struct.pack('<ihHIIHH', 16, 1, noc, rate, sbytes, ba, bits))
-        # data chunk
-        fid.write(b'data')
-        fid.write(struct.pack('<i', data.nbytes))
-        import sys
-        if data.dtype.byteorder == '>' or (data.dtype.byteorder == '=' and sys.byteorder == 'big'):
-            data = data.byteswap()
-        data.tofile(fid)
-        # cue chunk
-        if cuechunk != None: 
-          fid.write(b'cue ')
-          fid.write(cuechunk)
-        # smpl chunk
-        if smplchunk != None: 
-          fid.write(b'smpl')
-          fid.write(smplchunk)
-        # Determine file size and place it in correct
-        #  position at start of the file.
-        size = fid.tell()
-        fid.seek(4)
-        fid.write(struct.pack('<i', size-8))
-        fid.close()   
+
+    fid = open(filename, 'wb')
+    fid.write(b'RIFF')
+    fid.write(b'\x00\x00\x00\x00')
+    fid.write(b'WAVE')
+    # fmt chunk
+    fid.write(b'fmt ')
+    if data.ndim == 1:
+        noc = 1
     else:
+        noc = data.shape[1]
+    bits = data.dtype.itemsize * 8 if bitrate != 24 else 24
+    sbytes = rate*(bits // 8)*noc
+    ba = noc * (bits // 8)
+    fid.write(struct.pack('<ihHIIHH', 16, 1, noc, rate, sbytes, ba, bits))
+    # data chunk
+    if bitrate == 24:   # special handling of 24 bit wav, because there is no numpy.int24...
         a32 = numpy.asarray(data, dtype=numpy.int32)
         if a32.ndim == 1:               
             a32.shape = a32.shape + (1,)  # Convert to a 2D array with a single column.
-        a8 = (a32.reshape(a32.shape + (1,)) >> numpy.array([0, 8, 16])) & 255    # By shifting first 0 bits, then 8, then 16, the resulting output is 24 bit little-endian.
-        wavdata = a8.astype(numpy.uint8).tostring()
+        a8 = (a32.reshape(a32.shape + (1,)) >> numpy.array([0, 8, 16])) & 255  # By shifting first 0 bits, then 8, then 16, the resulting output is 24 bit little-endian.
+        data = a8.astype(numpy.uint8)
 
-        w = wave.open(filename, 'wb')
-        w.setnchannels(a32.shape[1])
-        w.setsampwidth(3)
-        w.setframerate(rate)
-        w.writeframes(wavdata)
-        w.close()
+    fid.write(b'data')
+    fid.write(struct.pack('<i', data.nbytes))
+    import sys
+    if data.dtype.byteorder == '>' or (data.dtype.byteorder == '=' and sys.byteorder == 'big'):
+        data = data.byteswap()
+
+    data.tofile(fid)
+    # cue chunk
+    if cuechunk != None: 
+      fid.write(b'cue ')
+      fid.write(cuechunk)
+    # smpl chunk
+    if smplchunk != None: 
+      fid.write(b'smpl')
+      fid.write(smplchunk)
+    # Determine file size and place it in correct
+    #  position at start of the file.
+    size = fid.tell()
+    fid.seek(4)
+    fid.write(struct.pack('<i', size-8))
+    fid.close()   
