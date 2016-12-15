@@ -1,27 +1,26 @@
 # wavfile.py (Enhanced)
-# Date: 2016/12/11 Joseph Basquin
+# Date: 2016/12/15 Joseph Basquin
+#
 # URL: https://gist.github.com/josephernest/3f22c5ed5dabf1815f16efa8fa53d476
 # Source: scipy/io/wavfile.py
 #
 # Added:
-# * read: also returns bitrate
-# * read: also returns cue markers + pitch (if chunk present)
-# * read: alos returns cue marker labels, see https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#labl
+# * read: also returns bitrate, cue markers, cue marker labels, loops, pitch (if present)
+#         See https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#labl
 # * read: 24 bit & 32 bit IEEE files support (inspired from wavio_weckesser.py from Warren Weckesser)
+# * read: added normalized (default False) that returns everything as float in [-1, 1]
+#
+# * write: can write cue markers, loops, pitch
 # * write: 24 bit support
-# * write: can write cue marker chunk (that was read before) or create a new cue marker chunk from a list of cue markers
-# * write: can write smpl (i.e. loops) chunk (that was read before) or create a new smpl chunk from a list of loops
+#
 # * removed RIFX support (big-endian) (never seen one in 10+ years of audio production/audio programming), only RIFF (little-endian) are supported
 # * removed read(..., mmap)
-#
-# Todo:
-# *
 #
 # Notes:
 # * cue markers / cue marker labels are *not* sorted
 #
 # Test:
-# ..\wav\____wav_wavefile_demo.py
+# ..\wav\____wave_wavfile_demo.py
 
 
 """
@@ -63,7 +62,7 @@ def _read_fmt_chunk(fid):
 
 # assumes file pointer is immediately
 #   after the 'data' id
-def _read_data_chunk(fid, noc, bits):
+def _read_data_chunk(fid, noc, bits, normalized=False):
     size = struct.unpack('<i',fid.read(4))[0]
 
     if bits == 8 or bits == 24:
@@ -89,6 +88,12 @@ def _read_data_chunk(fid, noc, bits):
         
     if bool(size & 1):     # if odd number of bytes, move 1 byte further (data chunk is word-aligned)
       fid.seek(1,1)    
+
+    if normalized:
+        if bits == 8 or bits == 16 or bits == 24: 
+            normfactor = 2 ** (bits-1)
+        data = numpy.float32(data) * 1.0 / normfactor
+
     return data
 
 def _skip_unknown_chunk(fid):
@@ -108,8 +113,8 @@ def _read_riff_chunk(fid):
         raise ValueError("Not a WAV file.")
     return fsize
 
-# open a wave-file
-def read(file, readmarkers=False, readpitch=False, cuechunk=False, smplchunk=False, cuelabels=False):
+
+def read(file, readmarkers=False, readmarkerlabels=False, readloops=False, readpitch=False, normalized=False):
     """
     Return the sample rate (in samples/sec) and data from a WAV file
 
@@ -145,23 +150,20 @@ def read(file, readmarkers=False, readpitch=False, cuechunk=False, smplchunk=Fal
     bits = 8
     cue = []
     _cuelabels = []
+    loops = []
     pitch = 0.0
-    cuechunkstr = ''
-    smplchunkstr = ''
     while (fid.tell() < fsize):
         # read the next chunk
         chunk_id = fid.read(4)
         if chunk_id == b'fmt ':
             size, comp, noc, rate, sbytes, ba, bits = _read_fmt_chunk(fid)
         elif chunk_id == b'data':
-            data = _read_data_chunk(fid, noc, bits)
+            data = _read_data_chunk(fid, noc, bits, normalized)
         elif chunk_id == b'cue ':
             str1 = fid.read(8)
             size, numcue = struct.unpack('<ii',str1)
-            cuechunkstr += str1
             for c in range(numcue):
                str1 = fid.read(24)
-               cuechunkstr += str1
                id, position, datachunkid, chunkstart, blockstart, sampleoffset = struct.unpack('<iiiiii',str1)
                cue.append(position)
         elif chunk_id == b'LIST':
@@ -170,18 +172,19 @@ def read(file, readmarkers=False, readpitch=False, cuechunk=False, smplchunk=Fal
         elif chunk_id in [b'ICRD', b'IENG', b'ISFT', b'ISTJ']:    # see http://www.pjb.com.au/midi/sfspec21.html#i5
             _skip_unknown_chunk(fid)
         elif chunk_id == b'labl':
-            str1=fid.read(8)
+            str1 = fid.read(8)
             size, id = struct.unpack('<ii',str1)
             size = size + (size % 2)                              # the size should be even, see WAV specfication, e.g. 16=>16, 23=>24
             _cuelabels.append(fid.read(size-4).rstrip('\x00'))    # remove the trailing null characters
         elif chunk_id == b'smpl':
-            smplchunkstr = fid.read(4)
-            size = struct.unpack('<i',smplchunkstr)[0]
-            str1 = fid.read(size)
-            smplchunkstr += str1
-            midiunitynote, midipitchfraction = struct.unpack('<iI',str1[12:20])
+            str1 = fid.read(40)
+            size, manuf, prod, sampleperiod, midiunitynote, midipitchfraction, smptefmt, smpteoffs, numsampleloops, samplerdata = struct.unpack('<iiiiiIiiii', str1)
             cents = midipitchfraction * 1./(2**32-1)
             pitch = 440. * 2 ** ((midiunitynote + cents - 69.)/12)
+            for i in range(numsampleloops):
+                str1 = fid.read(24)
+                cuepointid, type, start, end, fraction, playcount = struct.unpack('<iiiiii', str1) 
+                loops.append([start,end]) 
         else:
             warnings.warn("Chunk " + chunk_id + " skipped", WavFileWarning)
             _skip_unknown_chunk(fid)
@@ -189,14 +192,13 @@ def read(file, readmarkers=False, readpitch=False, cuechunk=False, smplchunk=Fal
     
     return (rate, data, bits, ) \
         + ((cue,) if readmarkers else ()) \
-        + ((pitch,) if readpitch else ()) \
-        + ((cuechunkstr,) if cuechunk else ()) \
-        + ((smplchunkstr,) if smplchunk else ()) \
-        + ((_cuelabels,) if cuelabels else ())
+        + ((_cuelabels,) if readmarkerlabels else ()) \
+        + ((loops,) if readloops else ()) \
+        + ((pitch,) if readpitch else ())
 
-# Write a wave-file
-# sample rate, data
-def write(filename, rate, data, cuechunk=None, cue=None, smplchunk=None, loops=None, bitrate=None):
+  
+
+def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=None):
     """
     Write a numpy array as a WAV file
 
@@ -232,6 +234,7 @@ def write(filename, rate, data, cuechunk=None, cue=None, smplchunk=None, loops=N
     sbytes = rate*(bits // 8)*noc
     ba = noc * (bits // 8)
     fid.write(struct.pack('<ihHIIHH', 16, 1, noc, rate, sbytes, ba, bits))
+    
     # data chunk
     if bitrate == 24:   # special handling of 24 bit wav, because there is no numpy.int24...
         a32 = numpy.asarray(data, dtype=numpy.int32)
@@ -248,25 +251,30 @@ def write(filename, rate, data, cuechunk=None, cue=None, smplchunk=None, loops=N
 
     data.tofile(fid)
     # cue chunk
-    if cuechunk != None: 
+    if markers:    # != None and != []
       fid.write(b'cue ')
-      fid.write(cuechunk)
-    elif cue:    # != None and != []
-      fid.write(b'cue ')
-      size = 4 + len(cue) * 24
-      fid.write(struct.pack('<ii', size, len(cue)))
-      for i, c in enumerate(cue):
+      size = 4 + len(markers) * 24
+      fid.write(struct.pack('<ii', size, len(markers)))
+      for i, c in enumerate(markers):
         s = struct.pack('<iiiiii', i + 1, c, 1635017060, 0, 0, c)           # 1635017060 is struct.unpack('<i',b'data')
         fid.write(s)
     # smpl chunk
-    if smplchunk != None: 
-      fid.write(b'smpl')
-      fid.write(smplchunk)
-    elif loops:
+    if loops or pitch:
+      if not loops:
+        loops = []
+      if pitch:
+        midiunitynote = 12 * numpy.log2(pitch * 1.0 / 440.0) + 69
+        midipitchfraction = int((midiunitynote - int(midiunitynote)) * (2**32-1))
+        midiunitynote = int(midiunitynote)
+        print(midipitchfraction, midiunitynote)
+      else:
+        midiunitynote = 0
+        midipitchfraction = 0
       fid.write(b'smpl')
       size = 36 + len(loops) * 24
       sampleperiod = int(1000000000.0 / rate)
-      fid.write(struct.pack('<iiiiiiiiii', size, 0, 0, sampleperiod, 0, 0, 0, 0, len(loops), 0))
+
+      fid.write(struct.pack('<iiiiiIiiii', size, 0, 0, sampleperiod, midiunitynote, midipitchfraction, 0, 0, len(loops), 0))
       for i, loop in enumerate(loops):
         fid.write(struct.pack('<iiiiii', 0, 0, loop[0], loop[1], 0, 0))
 
@@ -275,4 +283,4 @@ def write(filename, rate, data, cuechunk=None, cue=None, smplchunk=None, loops=N
     size = fid.tell()
     fid.seek(4)
     fid.write(struct.pack('<i', size-8))
-    fid.close()   
+    fid.close()
