@@ -1,5 +1,5 @@
 # wavfile.py (Enhanced)
-# Date: 2017/01/11 Joseph Basquin
+# Date: 20180430_2004 Joseph Basquin
 #
 # URL: https://gist.github.com/josephernest/3f22c5ed5dabf1815f16efa8fa53d476
 # Source: scipy/io/wavfile.py
@@ -14,6 +14,7 @@
 # * write: can write cue markers, cue marker labels, loops, pitch
 # * write: 24 bit support
 # * write: can write from a float normalized in [-1, 1] 
+# * write: 20180430_2002: bug fixed when length of array is odd (previously metadata were unreadable then): data chunks writing moved at the end of WAV file
 #
 # * removed RIFX support (big-endian) (never seen one in 10+ years of audio production/audio programming), only RIFF (little-endian) are supported
 # * removed read(..., mmap)
@@ -270,13 +271,6 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
     ba = noc * (bits // 8)
     fid.write(struct.pack('<ihHIIHH', 16, 1, noc, rate, sbytes, ba, bits))
 
-    fid.write(b'data')
-    fid.write(struct.pack('<i', data.nbytes))
-    import sys
-    if data.dtype.byteorder == '>' or (data.dtype.byteorder == '=' and sys.byteorder == 'big'):
-        data = data.byteswap()
-
-    data.tofile(fid)
     # cue chunk
     if markers:    # != None and != []
         if isinstance(markers[0], dict):       # then we have [{'position': 100, 'label': 'marker1'}, ...]
@@ -325,6 +319,15 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
       fid.write(struct.pack('<iiiiiIiiii', size, 0, 0, sampleperiod, midiunitynote, midipitchfraction, 0, 0, len(loops), 0))
       for i, loop in enumerate(loops):
         fid.write(struct.pack('<iiiiii', 0, 0, loop[0], loop[1], 0, 0))
+
+    # data chunks
+    fid.write(b'data')
+    fid.write(struct.pack('<i', data.nbytes))
+    import sys
+    if data.dtype.byteorder == '>' or (data.dtype.byteorder == '=' and sys.byteorder == 'big'):
+        data = data.byteswap()
+
+    data.tofile(fid)
 
     # Determine file size and place it in correct
     #  position at start of the file.
