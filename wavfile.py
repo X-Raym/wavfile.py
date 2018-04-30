@@ -1,5 +1,5 @@
 # wavfile.py (Enhanced)
-# Date: 20180430_2004 Joseph Basquin
+# Date: 20180430_2335 Joseph Basquin
 #
 # URL: https://gist.github.com/josephernest/3f22c5ed5dabf1815f16efa8fa53d476
 # Source: scipy/io/wavfile.py
@@ -14,7 +14,7 @@
 # * write: can write cue markers, cue marker labels, loops, pitch
 # * write: 24 bit support
 # * write: can write from a float normalized in [-1, 1] 
-# * write: 20180430_2002: bug fixed when length of array is odd (previously metadata were unreadable then): data chunks writing moved at the end of WAV file
+# * write: 20180430_2335: bug fixed when size of data chunk is odd (previously, metadata could become unreadable because of this)
 #
 # * removed RIFX support (big-endian) (never seen one in 10+ years of audio production/audio programming), only RIFF (little-endian) are supported
 # * removed read(..., mmap)
@@ -328,6 +328,9 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
         data = data.byteswap()
 
     data.tofile(fid)
+
+    if data.nbytes % 2 == 1: # add an extra padding byte if data.nbytes is odd: https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#data
+        fid.write('\x00')
 
     # Determine file size and place it in correct
     #  position at start of the file.
