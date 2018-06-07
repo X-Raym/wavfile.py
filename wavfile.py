@@ -2,9 +2,10 @@
 # Date: 20180430_2335 Joseph Basquin
 #
 # Mod by X-Raym
-# Date: 20180706_1539
+# Date: 20180706_1558
 # * renamed variables to avoid conflict with python native functions
 # * correct bytes error
+# * correct write function
 #
 # URL: https://gist.github.com/josephernest/3f22c5ed5dabf1815f16efa8fa53d476
 # Source: scipy/io/wavfile.py
@@ -121,7 +122,7 @@ def _read_riff_chunk(fid):
     return fsize
 
 
-def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False, readloops=False, readpitch=False, normalized=False, forcestereo=False):
+def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False, readloops=False, readpitch=False, normalized=False, forcestereo=False, Log=False):
     """
     Return the sample rate (in samples/sec) and data from a WAV file
 
@@ -199,7 +200,8 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
                 cuepointid, datatype, start, end, fraction, playcount = struct.unpack('<iiiiii', str1)
                 loops.append([start, end])
         else:
-            warnings.warn("Chunk " + str(chunk_id) + " skipped", WavFileWarning)
+            if Log:
+            	warnings.warn("Chunk " + str(chunk_id) + " skipped", WavFileWarning)
             _skip_unknown_chunk(fid)
     fid.close()
 
@@ -290,10 +292,10 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
             s = struct.pack('<iiiiii', i + 1, c, 1635017060, 0, 0, c)           # 1635017060 is struct.unpack('<i',b'data')
             fid.write(s)
 
-        lbls = ''
+        lbls = b''
         for i, lbl in enumerate(labels):
             lbls += b'labl'
-            label = lbl + ('\x00' if len(lbl) % 2 == 1 else '\x00\x00')
+            label = lbl + (b'\x00' if len(lbl) % 2 == 1 else b'\x00\x00')
             size = len(lbl) + 1 + 4          # because \x00
             lbls += struct.pack('<ii', size, i + 1)
             lbls += label
