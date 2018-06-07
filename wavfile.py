@@ -1,19 +1,23 @@
 # wavfile.py (Enhanced)
 # Date: 20180430_2335 Joseph Basquin
 #
+# Mod by X-Raym
+# Date: 20180706_1539
+# * renamed variables to avoid conflict with python native functions
+# * correct bytes error
+#
 # URL: https://gist.github.com/josephernest/3f22c5ed5dabf1815f16efa8fa53d476
 # Source: scipy/io/wavfile.py
 #
 # Added:
 # * read: also returns bitrate, cue markers + cue marker labels (sorted), loops, pitch
-#         See https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#labl
 # * read: 24 bit & 32 bit IEEE files support (inspired from wavio_weckesser.py from Warren Weckesser)
 # * read: added normalized (default False) that returns everything as float in [-1, 1]
 # * read: added forcestereo that returns a 2-dimensional array even if input is mono
 #
 # * write: can write cue markers, cue marker labels, loops, pitch
 # * write: 24 bit support
-# * write: can write from a float normalized in [-1, 1] 
+# * write: can write from a float normalized in [-1, 1]
 # * write: 20180430_2335: bug fixed when size of data chunk is odd (previously, metadata could become unreadable because of this)
 #
 # * removed RIFX support (big-endian) (never seen one in 10+ years of audio production/audio programming), only RIFF (little-endian) are supported
@@ -44,9 +48,9 @@ from operator import itemgetter
 
 class WavFileWarning(UserWarning):
     pass
-    
+
 _ieee = False
-    
+
 # assumes file pointer is immediately
 #  after the 'fmt ' id
 def _read_fmt_chunk(fid):
@@ -56,8 +60,8 @@ def _read_fmt_chunk(fid):
         if (comp == 3):
           global _ieee
           _ieee = True
-          #warnings.warn("IEEE format not supported", WavFileWarning)        
-        else: 
+          #warnings.warn("IEEE format not supported", WavFileWarning)
+        else:
           warnings.warn("Unfamiliar format bytes", WavFileWarning)
         if (size>16):
             fid.read(size-16)
@@ -70,30 +74,30 @@ def _read_data_chunk(fid, noc, bits, normalized=False):
 
     if bits == 8 or bits == 24:
         dtype = 'u1'
-        bytes = 1
+        bytes_val = 1
     else:
-        bytes = bits//8
-        dtype = '<i%d' % bytes
-        
+        bytes_val = bits//8
+        dtype = '<i%d' % bytes_val
+
     if bits == 32 and _ieee:
        dtype = 'float32'
-        
-    data = numpy.fromfile(fid, dtype=dtype, count=size//bytes)
-    
+
+    data = numpy.fromfile(fid, dtype=dtype, count=size//bytes_val)
+
     if bits == 24:
         a = numpy.empty((len(data) // 3, 4), dtype='u1')
         a[:, :3] = data.reshape((-1, 3))
         a[:, 3:] = (a[:, 3 - 1:3] >> 7) * 255
         data = a.view('<i4').reshape(a.shape[:-1])
-    
+
     if noc > 1:
         data = data.reshape(-1,noc)
-        
+
     if bool(size & 1):     # if odd number of bytes, move 1 byte further (data chunk is word-aligned)
-      fid.seek(1,1)    
+      fid.seek(1,1)
 
     if normalized:
-        if bits == 8 or bits == 16 or bits == 24: 
+        if bits == 8 or bits == 16 or bits == 24:
             normfactor = 2 ** (bits-1)
         data = numpy.float32(data) * 1.0 / normfactor
 
@@ -103,7 +107,7 @@ def _skip_unknown_chunk(fid):
     data = fid.read(4)
     size = struct.unpack('<i', data)[0]
     if bool(size & 1):     # if odd number of bytes, move 1 byte further (data chunk is word-aligned)
-      size += 1 
+      size += 1
     fid.seek(size, 1)
 
 def _read_riff_chunk(fid):
@@ -168,22 +172,22 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
             size, numcue = struct.unpack('<ii',str1)
             for c in range(numcue):
                 str1 = fid.read(24)
-                id, position, datachunkid, chunkstart, blockstart, sampleoffset = struct.unpack('<iiiiii', str1)
+                idx, position, datachunkid, chunkstart, blockstart, sampleoffset = struct.unpack('<iiiiii', str1)
                 #_cue.append(position)
-                _markersdict[id]['position'] = position                    # needed to match labels and markers
+                _markersdict[idx]['position'] = position                    # needed to match labels and markers
 
         elif chunk_id == b'LIST':
             str1 = fid.read(8)
-            size, type = struct.unpack('<ii', str1)
+            size, datatype = struct.unpack('<ii', str1)
         elif chunk_id in [b'ICRD', b'IENG', b'ISFT', b'ISTJ']:    # see http://www.pjb.com.au/midi/sfspec21.html#i5
             _skip_unknown_chunk(fid)
         elif chunk_id == b'labl':
             str1 = fid.read(8)
-            size, id = struct.unpack('<ii',str1)
+            size, idx = struct.unpack('<ii',str1)
             size = size + (size % 2)                              # the size should be even, see WAV specfication, e.g. 16=>16, 23=>24
-            label = fid.read(size-4).rstrip('\x00')               # remove the trailing null characters
+            label = fid.read(size-4).rstrip(bytes('\x00', 'UTF-8'))               # remove the trailing null characters
             #_cuelabels.append(label)
-            _markersdict[id]['label'] = label                           # needed to match labels and markers
+            _markersdict[idx]['label'] = label                           # needed to match labels and markers
 
         elif chunk_id == b'smpl':
             str1 = fid.read(40)
@@ -192,10 +196,10 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
             pitch = 440. * 2 ** ((midiunitynote + cents - 69.)/12)
             for i in range(numsampleloops):
                 str1 = fid.read(24)
-                cuepointid, type, start, end, fraction, playcount = struct.unpack('<iiiiii', str1) 
+                cuepointid, datatype, start, end, fraction, playcount = struct.unpack('<iiiiii', str1)
                 loops.append([start, end])
         else:
-            warnings.warn("Chunk " + chunk_id + " skipped", WavFileWarning)
+            warnings.warn("Chunk " + str(chunk_id) + " skipped", WavFileWarning)
             _skip_unknown_chunk(fid)
     fid.close()
 
@@ -205,7 +209,7 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
     _markerslist = sorted([_markersdict[l] for l in _markersdict], key=lambda k: k['position'])  # sort by position
     _cue = [m['position'] for m in _markerslist]
     _cuelabels = [m['label'] for m in _markerslist]
-    
+
     return (rate, data, bits, ) \
         + ((_cue,) if readmarkers else ()) \
         + ((_cuelabels,) if readmarkerlabels else ()) \
@@ -213,7 +217,7 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
         + ((loops,) if readloops else ()) \
         + ((pitch,) if readpitch else ())
 
-  
+
 
 def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=None, normalized=False):
     """
@@ -245,7 +249,7 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
             a32 = numpy.asarray(data * (2 ** 23 - 1), dtype=numpy.int32)
         else:
             a32 = numpy.asarray(data, dtype=numpy.int32)
-        if a32.ndim == 1:               
+        if a32.ndim == 1:
             a32.shape = a32.shape + (1,)  # Convert to a 2D array with a single column.
         a8 = (a32.reshape(a32.shape + (1,)) >> numpy.array([0, 8, 16])) & 255  # By shifting first 0 bits, then 8, then 16, the resulting output is 24 bit little-endian.
         data = a8.astype(numpy.uint8)
@@ -295,10 +299,10 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
             lbls += label
 
         fid.write(b'LIST')
-        size = len(lbls) + 4 
-        fid.write(struct.pack('<i', size))                         
+        size = len(lbls) + 4
+        fid.write(struct.pack('<i', size))
         fid.write(b'adtl')                                                      # https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#list
-        fid.write(lbls)        
+        fid.write(lbls)
 
     # smpl chunk
     if loops or pitch:
