@@ -3,6 +3,7 @@
 #
 # Mod by X-Raym
 # Date: 20180706_1558
+# * return 'success' at end of write
 # * renamed variables to avoid conflict with python native functions
 # * correct bytes error
 # * correct write function
@@ -122,7 +123,7 @@ def _read_riff_chunk(fid):
     return fsize
 
 
-def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False, readloops=False, readpitch=False, normalized=False, forcestereo=False, Log=False):
+def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False, readloops=False, readpitch=False, normalized=False, forcestereo=False, log=False):
     """
     Return the sample rate (in samples/sec) and data from a WAV file
 
@@ -200,7 +201,7 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
                 cuepointid, datatype, start, end, fraction, playcount = struct.unpack('<iiiiii', str1)
                 loops.append([start, end])
         else:
-            if Log:
+            if log:
             	warnings.warn("Chunk " + str(chunk_id) + " skipped", WavFileWarning)
             _skip_unknown_chunk(fid)
     fid.close()
@@ -344,3 +345,4 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
     fid.seek(4)
     fid.write(struct.pack('<i', size-8))
     fid.close()
+    return 'success'
