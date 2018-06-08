@@ -3,6 +3,7 @@
 #
 # Mod by X-Raym
 # Date: 20180706_1558
+# * add log parameter for read function
 # * return 'success' at end of write
 # * renamed variables to avoid conflict with python native functions
 # * correct bytes error
