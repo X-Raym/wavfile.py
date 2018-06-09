@@ -2,9 +2,8 @@
 # Date: 20180430_2335 Joseph Basquin
 #
 # Mod by X-Raym
-# Date: 20180706_1558
-# * add log parameter for read function
-# * return 'success' at end of write
+# Date: 201609_2224
+# * LIST-INFO support
 # * renamed variables to avoid conflict with python native functions
 # * correct bytes error
 # * correct write function
@@ -113,6 +112,17 @@ def _skip_unknown_chunk(fid):
       size += 1
     fid.seek(size, 1)
 
+def _read_unknown_chunk(fid, name):
+    data = fid.read(4)
+    size = struct.unpack('<i', data)[0]
+    # string = fid.read(size).rstrip(bytes('\x00', 'UTF-8')).decode("utf-8")
+    offset = 0
+    if bool(size & 1):     # if odd number of bytes, move 1 byte further (data chunk is word-aligned)
+      offset = 1
+    string = fid.read(size)
+    fid.seek(offset, 1)
+    return string
+
 def _read_riff_chunk(fid):
     str1 = fid.read(4)
     if str1 != b'RIFF':
@@ -124,7 +134,7 @@ def _read_riff_chunk(fid):
     return fsize
 
 
-def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False, readloops=False, readpitch=False, normalized=False, forcestereo=False, log=False):
+def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False, readloops=False, readpitch=False, normalized=False, forcestereo=False, log=True, readlistinfo=True, readunsupported=True):
     """
     Return the sample rate (in samples/sec) and data from a WAV file
 
@@ -161,11 +171,15 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
     #_cue = []
     #_cuelabels = []
     _markersdict = collections.defaultdict(lambda: {'position': -1, 'label': ''})
+    unsupported = b''
     loops = []
+    list_info_index = ["IARL", "IART", "ICMS", "ICMT", "ICOP",  "ICRD", "IENG", "IGNR", "IKEY", "IMED", "INAM", "IPRD", "ISBJ", "ISFT", "ISRC", "ISRF", "ITCH"]
+    info = {}
     pitch = 0.0
     while (fid.tell() < fsize):
         # read the next chunk
         chunk_id = fid.read(4)
+        chunk_id_str = chunk_id.decode("utf-8")
         if chunk_id == b'fmt ':
             size, comp, noc, rate, sbytes, ba, bits = _read_fmt_chunk(fid)
         elif chunk_id == b'data':
@@ -182,8 +196,11 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
         elif chunk_id == b'LIST':
             str1 = fid.read(8)
             size, datatype = struct.unpack('<ii', str1)
-        elif chunk_id in [b'ICRD', b'IENG', b'ISFT', b'ISTJ']:    # see http://www.pjb.com.au/midi/sfspec21.html#i5
-            _skip_unknown_chunk(fid)
+        elif chunk_id_str in list_info_index:   # see http://www.pjb.com.au/midi/sfspec21.html#i5
+            s = _read_unknown_chunk(fid, chunk_id_str)
+            print(s)
+            info[ chunk_id_str ] = s.decode('UTF-8')
+            print( chunk_id_str )
         elif chunk_id == b'labl':
             str1 = fid.read(8)
             size, idx = struct.unpack('<ii',str1)
@@ -203,8 +220,14 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
                 loops.append([start, end])
         else:
             if log:
-            	warnings.warn("Chunk " + str(chunk_id) + " skipped", WavFileWarning)
-            _skip_unknown_chunk(fid)
+                warnings.warn("Chunk " + str(chunk_id) + " skipped", WavFileWarning)
+            if readunsupported:
+                print( chunk_id.decode("utf-8")  + " unsupported")
+                retval = _read_unknown_chunk(fid, chunk_id_str)
+                # print(retval)
+                unsupported += retval
+            else:
+                _skip_unknown_chunk(fid)
     fid.close()
 
     if data.ndim == 1 and forcestereo:
@@ -219,11 +242,13 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
         + ((_cuelabels,) if readmarkerlabels else ()) \
         + ((_markerslist,) if readmarkerslist else ()) \
         + ((loops,) if readloops else ()) \
-        + ((pitch,) if readpitch else ())
+        + ((pitch,) if readpitch else ()) \
+        + ((info,) if readlistinfo else ()) \
+        + ((unsupported,) if readunsupported else ())
 
 
 
-def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=None, normalized=False):
+def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=None, normalized=False, infos=None):
     """
     Write a numpy array as a WAV file
 
@@ -304,7 +329,7 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
 
         fid.write(b'LIST')
         size = len(lbls) + 4
-        fid.write(struct.pack('<i', size))
+        fid.write(struct.pack('<i', size+1))
         fid.write(b'adtl')                                                      # https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#list
         fid.write(lbls)
 
@@ -339,6 +364,27 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
 
     if data.nbytes % 2 == 1: # add an extra padding byte if data.nbytes is odd: https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#data
         fid.write('\x00')
+
+    # This need to be made modular !
+    if infos:
+        info = b''
+        for key, val in infos.items():
+            key = bytes(key, 'UTF-8')
+            val = bytes(val, 'UTF-8')
+            if len(val) % 2 == 1:
+              val += b'\x00'
+            info += key
+            size = len(val)    # because \x00
+            info += struct.pack('<i', size)
+            info += val
+        # info += b'\x00'
+        if len(info) % 2 == 1:
+          info += b'\x00'
+        fid.write(b'LIST')
+        size = len(info) + 4
+        fid.write(struct.pack('<i', size))
+        fid.write(b'INFO')                                                     # https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#list
+        fid.write(info)
 
     # Determine file size and place it in correct
     #  position at start of the file.
