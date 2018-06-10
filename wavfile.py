@@ -2,8 +2,7 @@
 # Date: 20180430_2335 Joseph Basquin
 #
 # Mod by X-Raym
-# Date: 201609_2224
-# * LIST-INFO support
+# Date: 20180706_1558
 # * renamed variables to avoid conflict with python native functions
 # * correct bytes error
 # * correct write function
@@ -12,6 +11,7 @@
 # Source: scipy/io/wavfile.py
 #
 # Added:
+# * unsupported chunk read and write
 # * read: also returns bitrate, cue markers + cue marker labels (sorted), loops, pitch
 # * read: 24 bit & 32 bit IEEE files support (inspired from wavio_weckesser.py from Warren Weckesser)
 # * read: added normalized (default False) that returns everything as float in [-1, 1]
@@ -171,7 +171,7 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
     #_cue = []
     #_cuelabels = []
     _markersdict = collections.defaultdict(lambda: {'position': -1, 'label': ''})
-    unsupported = b''
+    unsupported = {}
     loops = []
     list_info_index = ["IARL", "IART", "ICMS", "ICMT", "ICOP",  "ICRD", "IENG", "IGNR", "IKEY", "IMED", "INAM", "IPRD", "ISBJ", "ISFT", "ISRC", "ISRF", "ITCH"]
     info = {}
@@ -198,9 +198,7 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
             size, datatype = struct.unpack('<ii', str1)
         elif chunk_id_str in list_info_index:   # see http://www.pjb.com.au/midi/sfspec21.html#i5
             s = _read_unknown_chunk(fid, chunk_id_str)
-            print(s)
             info[ chunk_id_str ] = s.decode('UTF-8')
-            print( chunk_id_str )
         elif chunk_id == b'labl':
             str1 = fid.read(8)
             size, idx = struct.unpack('<ii',str1)
@@ -222,10 +220,8 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
             if log:
                 warnings.warn("Chunk " + str(chunk_id) + " skipped", WavFileWarning)
             if readunsupported:
-                print( chunk_id.decode("utf-8")  + " unsupported")
-                retval = _read_unknown_chunk(fid, chunk_id_str)
-                # print(retval)
-                unsupported += retval
+                # print( chunk_id.decode("utf-8")  + " unsupported")
+                unsupported[ chunk_id ] = _read_unknown_chunk(fid, chunk_id_str)
             else:
                 _skip_unknown_chunk(fid)
     fid.close()
@@ -248,7 +244,7 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
 
 
 
-def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=None, normalized=False, infos=None):
+def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=None, normalized=False, infos=None, unsupported=None):
     """
     Write a numpy array as a WAV file
 
@@ -303,6 +299,22 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
     sbytes = rate * (bits // 8) * noc
     ba = noc * (bits // 8)
     fid.write(struct.pack('<ihHIIHH', 16, 1, noc, rate, sbytes, ba, bits))
+
+    if unsupported:
+        for key, val in unsupported.items():
+            info = b''
+            if len(key) % 2 == 1:
+              key += b'\x00'
+            if len(val) % 2 == 1:
+              val += b'\x00'
+            info += key
+            size = len(val)    # because \x00
+            info = struct.pack('<i', size)
+            info += val
+            fid.write( key )
+            size = len(info)
+            fid.write(struct.pack('<i', size))
+            fid.write(info)
 
     # cue chunk
     if markers:    # != None and != []
