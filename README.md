@@ -1,4 +1,4 @@
-# wavefile.py
+# wavfile.py
 
 Initial version of this file come form [Scipy](https://github.com/scipy/scipy/blob/v0.14.0/scipy/io/wavfile.py) project.
 
