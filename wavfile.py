@@ -221,12 +221,8 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
             if log:
                 warnings.warn("Chunk " + str(chunk_id) + " skipped", WavFileWarning)
             if readunsupported:
-                print( chunk_id.decode("utf-8")  + " unsupported")
-                test = _read_unknown_chunk(fid, chunk_id_str)
-                if chunk_id_str == 'bext':
-                    print(test)
-                    print(len(test))
-                unsupported[ chunk_id ] = test
+                # print( chunk_id.decode("utf-8")  + " unsupported")
+                unsupported[ chunk_id ] = _read_unknown_chunk(fid, chunk_id_str)
             else:
                 _skip_unknown_chunk(fid)
     fid.close()
