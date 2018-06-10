@@ -1,8 +1,7 @@
 # wavfile.py (Enhanced)
-# Date: 20180430_2335 Joseph Basquin
 #
 # Mod by X-Raym
-# Date: 20180706_1558
+# Date: 20181006_1138
 # * unsupported chunk read and write
 # * LIST-INFO support
 # * renamed variables to avoid conflict with python native functions
@@ -12,7 +11,8 @@
 # URL: https://gist.github.com/josephernest/3f22c5ed5dabf1815f16efa8fa53d476
 # Source: scipy/io/wavfile.py
 #
-# Added:
+# Mod by Joseph Basquin
+# Date: 20180430_2335
 # * read: also returns bitrate, cue markers + cue marker labels (sorted), loops, pitch
 # * read: 24 bit & 32 bit IEEE files support (inspired from wavio_weckesser.py from Warren Weckesser)
 # * read: added normalized (default False) that returns everything as float in [-1, 1]
@@ -221,8 +221,12 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
             if log:
                 warnings.warn("Chunk " + str(chunk_id) + " skipped", WavFileWarning)
             if readunsupported:
-                # print( chunk_id.decode("utf-8")  + " unsupported")
-                unsupported[ chunk_id ] = _read_unknown_chunk(fid, chunk_id_str)
+                print( chunk_id.decode("utf-8")  + " unsupported")
+                test = _read_unknown_chunk(fid, chunk_id_str)
+                if chunk_id_str == 'bext':
+                    print(test)
+                    print(len(test))
+                unsupported[ chunk_id ] = test
             else:
                 _skip_unknown_chunk(fid)
     fid.close()
@@ -303,18 +307,16 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
 
     if unsupported:
         for key, val in unsupported.items():
-            info = b''
             if len(key) % 2 == 1:
               key += b'\x00'
             if len(val) % 2 == 1:
               val += b'\x00'
-            info += key
+            info = key
             size = len(val)    # because \x00
             info = struct.pack('<i', size)
             info += val
             fid.write( key )
             size = len(info)
-            fid.write(struct.pack('<i', size))
             fid.write(info)
 
     # cue chunk
