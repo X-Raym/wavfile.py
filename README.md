@@ -8,6 +8,14 @@ It had few bugs to fix though, and some critical functions were still missing, l
 
 That's why I had to mod it to bring new features. Here is the list:
 
+* unsupported chunk read and write
+* LIST-INFO support
+* renamed variables to avoid conflict with python native functions
+* correct bytes error
+* correct write function
+
+And here previously added optimizations by Joseph Ernest.
+
 * read: also returns bitrate, cue markers + cue marker labels (sorted), loops, pitch
 * read: 24 bit & 32 bit IEEE files support (inspired from wavio_weckesser.py from Warren Weckesser)
 * read: added normalized (default False) that returns everything as float in [-1, 1]
