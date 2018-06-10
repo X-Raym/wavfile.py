@@ -1,7 +1,8 @@
 # wavfile.py (Enhanced)
 #
 # Mod by X-Raym
-# Date: 20181006_1138
+# Date: 20181006_1410
+# * corrected loops
 # * unsupported chunk read and write
 # * LIST-INFO support
 # * renamed variables to avoid conflict with python native functions
@@ -216,7 +217,7 @@ def read(file, readmarkers=False, readmarkerlabels=False, readmarkerslist=False,
             for i in range(numsampleloops):
                 str1 = fid.read(24)
                 cuepointid, datatype, start, end, fraction, playcount = struct.unpack('<iiiiii', str1)
-                loops.append([start, end])
+                loops.append({'cuepointid': cuepointid, 'datatype': datatype, 'start': start, 'end': end, 'fraction': fraction, 'playcount': playcount})
         else:
             if log:
                 warnings.warn("Chunk " + str(chunk_id) + " skipped", WavFileWarning)
@@ -340,7 +341,7 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
 
         fid.write(b'LIST')
         size = len(lbls) + 4
-        fid.write(struct.pack('<i', size+1))
+        fid.write(struct.pack('<i', size))
         fid.write(b'adtl')                                                      # https://web.archive.org/web/20141226210234/http://www.sonicspot.com/guide/wavefiles.html#list
         fid.write(lbls)
 
@@ -362,7 +363,7 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
 
       fid.write(struct.pack('<iiiiiIiiii', size, 0, 0, sampleperiod, midiunitynote, midipitchfraction, 0, 0, len(loops), 0))
       for i, loop in enumerate(loops):
-        fid.write(struct.pack('<iiiiii', 0, 0, loop[0], loop[1], 0, 0))
+        fid.write(struct.pack('<iiiiii', loop['cuepointid'], loop['datatype'], loop['start'], loop['end'], loop['fraction'], loop['playcount']))
 
     # data chunks
     fid.write(b'data')
