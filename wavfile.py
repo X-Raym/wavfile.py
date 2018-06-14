@@ -384,15 +384,15 @@ def write(filename, rate, data, bitrate=None, markers=None, loops=None, pitch=No
             key = bytes(key, 'UTF-8')
             val = bytes(val, 'UTF-8')
             #val += b'\x00' # Note: Fix windows display error. Is this valid ?
-            # if len(val) % 2 == 1:
-              # val += b'\x00'
+            if len(val) % 2 == 1:
+              val += b'\x00'
             info += key
             size = len(val)    # because \x00
             info += struct.pack('<i', size)
             info += val
         # info += b'\x00'
         if len(info) % 2 == 1:
-          #info += b'\x00'
+          info += b'\x00'
         fid.write(b'LIST')
         size = len(info) + 4
         fid.write(struct.pack('<i', size))
