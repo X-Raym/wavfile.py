@@ -1,7 +1,7 @@
 # wavfile.py (Enhanced)
 #
 # Mod by X-Raym
-# Date: 20181006_1410
+# Date: 20181906_1222
 # * corrected loops
 # * unsupported chunk read and write
 # * LIST-INFO support
@@ -42,13 +42,13 @@ Functions
 `write`: Write a numpy array as a WAV file.
 
 """
-from __future__ import division, print_function, absolute_import
+#from __future__ import division, print_function, absolute_import
 
 import numpy
 import struct
 import warnings
 import collections
-from operator import itemgetter
+#from operator import itemgetter
 
 class WavFileWarning(UserWarning):
     pass
